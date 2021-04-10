@@ -1,14 +1,12 @@
 
 from tensorflow.keras.models import Sequential
 import tensorflow.keras.layers as kl
-import tensorflow.keras.layers as ka
 import tensorflow.keras.models as km
-import tensorflow as tf
 
 from tensorflow.keras import regularizers
 
-from tensorflow.keras.layers import Dense, Activation, Flatten, Dropout, BatchNormalization,Reshape
-from tensorflow.keras.layers import Conv2D, MaxPooling2D,Lambda,AveragePooling2D,Input,GlobalAveragePooling2D
+from tensorflow.keras.layers import Dense, Activation, Flatten, Dropout, BatchNormalization
+from tensorflow.keras.layers import Conv2D, MaxPooling2D,AveragePooling2D,Input
 
 import tensorflow.keras.optimizers as ko
 

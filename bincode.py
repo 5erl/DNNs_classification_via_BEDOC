@@ -1,12 +1,7 @@
 #!/usr/bin/python3
 
-import os,sys,csv,copy
+import csv,copy
 import numpy as np
-from itertools import combinations,permutations
-import datetime,time,fnmatch
-
-from scipy.linalg import hadamard
-
 
 
 class BINCode(object):
@@ -68,6 +63,12 @@ class BINCode(object):
 
         return oneHotCodes
 
+    def PrecisionOneHotAll(self,predictions,labels):
+        acc = self.PrecisionOneHot(predictions,labels)
+
+        return acc,100.0 - acc,acc
+
+
     def PrecisionOneHot(self,predictions,labels):
 
         data = predictions
@@ -112,6 +113,57 @@ class BINCode(object):
         acc = (tp / (tp+fp)) * 100.0
         return  acc
 
+    def PrecisionBinaryAll(self,predictions,labels):
+
+        num_all = len(predictions)
+
+        labelAliases = self.CreateTranslateTableAliases()
+
+        labelAliasesNegative = {}
+
+        for olp in labelAliases.keys():
+            labelAliasesNegative[olp] = []
+            for oln,cs in labelAliases.items():
+                if olp != oln:
+                    labelAliasesNegative[olp].extend(cs)
+
+        predictions[predictions <  0.5] = 0.0
+        predictions[predictions >= 0.5] = 1.0
+        binPredictions = predictions.astype('int8')
+
+        count = 0
+        ok = 0
+        detected = 0
+        undetected = 0
+        for n,(pred,origLabel) in enumerate(zip(binPredictions,labels)):
+            count += 1
+
+            numPred  = self.BinArray2Num(pred)
+            codes = labelAliases[origLabel]
+            if numPred in codes:
+                ok += 1
+
+            elif numPred in labelAliasesNegative[origLabel]:
+                undetected += 1
+            else:
+                detected += 1
+
+
+        num_acceptable = ok + undetected
+
+        realiab =  (ok / num_acceptable) * 100.0
+
+        accuracy = ((ok)/num_all)* 100.0
+        detectecd = ((detected)/num_all)* 100.0
+        undetected_acc= ((undetected)/num_all)* 100.0
+
+        return  accuracy,undetected_acc,realiab
+
+
+    def PrecisionEuclideSoftmaxAll(self,data,labels):
+        acc = self.PrecisionOneHotZadeh(data,labels)
+        return  acc,100.0-acc,acc
+
 
     def PrecisionOneHotZadeh(self,data,labels):
 
@@ -133,61 +185,120 @@ class BINCode(object):
             return (tp/count)*100.0
 
     def PrecisionOneHotZadehAll(self,predictions,labels):
-        #data = predictions[:,:,0]
-            data = predictions
-            print("predictions:")
-            print(data[:5,:])
+        data = predictions
 
-            width = 1024
-            #outWidth = data.shape[-1]
-            outWidth = 10
-            dataMax = (width - 1) - np.argmax(data,axis = 1)
+        #hard coded!!!
+        width = 1024
+        outWidth = 10
+        dataMax = (width - 1) - np.argmax(data,axis = 1)
 
+        predictionsBin = np.zeros( (dataMax.shape[0] , outWidth), dtype=np.int8)
 
-            print("dataMax:")
-            print(dataMax[:5])
-            print(labels[:5])
-
-            predictionsBin = np.zeros( (dataMax.shape[0] , outWidth), dtype=np.int8)
-
-            labelAliases = self.CreateTranslateTableC1Aliases()
+        labelAliases = self.CreateTranslateTableAliases()
 
 
-            labelAliasesNegative = {}
+        labelAliasesNegative = {}
 
-            for olp in labelAliases.keys():
-                labelAliasesNegative[olp] = []
-                for oln,cs in labelAliases.items():
-                    if olp != oln:
-                        labelAliasesNegative[olp].extend(cs)
+        for olp in labelAliases.keys():
+            labelAliasesNegative[olp] = []
+            for oln,cs in labelAliases.items():
+                if olp != oln:
+                    labelAliasesNegative[olp].extend(cs)
 
-            count = 0
-            ok = 0
-            repairable = 0
-            unrepairable = 0
-            for n,(pred,origLabel) in enumerate(zip(dataMax,labels)):
-                count += 1
+        count = 0
+        ok = 0
+        repairable = 0
+        unrepairable = 0
+        for n,(pred,origLabel) in enumerate(zip(dataMax,labels)):
+            count += 1
 
-                codes = labelAliases[origLabel]
-                #labelCodeIndex = (width-1) - code
-                if pred in codes:
-                    ok += 1
+            codes = labelAliases[origLabel]
+            if pred in codes:
+                ok += 1
 
-                elif pred in labelAliasesNegative[origLabel]:
+            elif pred in labelAliasesNegative[origLabel]:
+                unrepairable += 1
+            else:
+                repairable += 1
+
+            predictionsBin[n] = self.Num2BinArray(pred,outWidth,type=np.int8)
+
+        fca = (ok/count)*100.0
+        detectable = (repairable/count)*100.0
+        undetectable_acc = (unrepairable/count)*100.0
+
+
+        num_acceptable = ok + unrepairable
+        realiability =  (ok / num_acceptable) * 100.0
+
+        return fca,undetectable_acc,realiability
+
+
+    def PrecisionHadamardEuclideAll(self,data,labels):
+
+        predictions = data
+        num_all = len(predictions)
+
+        labelAliases = self.CreateTranslateTableAliases()
+
+        labelAliasesNegative = {}
+
+        for olp in labelAliases.keys():
+            labelAliasesNegative[olp] = []
+            for oln,cs in labelAliases.items():
+                if olp != oln:
+                    labelAliasesNegative[olp].extend(cs)
+
+
+        allCodesCount = self.AllCodesCount()
+        allCodes = np.zeros((allCodesCount,self.CodeWidth()),dtype=np.float32)
+        for ic in range(allCodesCount):
+            z = self.Num2BinArrayF(ic)
+            allCodes[ic] = z
+
+        count = 0
+        ok = 0
+        repairable = 0
+        unrepairable = 0
+
+        for n,(pred,origLab) in enumerate(zip(predictions,labels)):
+
+            all_euc = np.linalg.norm((pred-allCodes),axis=1)
+            min_euc = np.argmin(all_euc)
+
+            eucLabel = -1
+            count += 1
+            fp = False
+
+            for codeLab,codeNums in labelAliases.items():
+                if min_euc in codeNums:
+                    eucLabel = codeLab
+                    break
+
+            if origLab == eucLabel:
+                ok += 1
+            else:
+
+                for codeLab,codeNums in labelAliasesNegative.items():
+                    if min_euc in codeNums:
+                        fp = True
+                        break
+
+                if fp == True:
                     unrepairable += 1
                 else:
                     repairable += 1
 
-                predictionsBin[n] = bincode.BINCode.Num2BinArray(pred,outWidth,type=np.int8)
 
-            prec2 = (ok/count)*100.0
-            prec_repairable = (repairable/count)*100.0
-            prec_unrepairable = (unrepairable/count)*100.0
-            prec_r2 = prec2
-            outp_str = "---> precision: %.4f, count: %d, tp: %d, prec_repairable: %.4f, prec_unrepairable: %.4f <---\n" %(prec2,count,ok,prec_repairable,prec_unrepairable)
-            print(outp_str)
+        num_acceptable = ok + unrepairable
 
-            #return float(prec),float(prec_r),outp_str
+        accuracy = ((ok)/num_all)* 100.0
+        prec_repairable = ((repairable)/num_all)* 100.0
+        prec_unrepairable = ((unrepairable)/num_all)* 100.0
+        realiab =  (ok / num_acceptable) * 100.0
+
+        return  accuracy,prec_unrepairable,realiab
+
 
     def PrecisionHadamardEuclide(self,predictions,labels):
 
@@ -219,16 +330,26 @@ class BINCode(object):
         data = copy.deepcopy(predictions)
         if self.dataType == "one_hot":
             accuracy = self.PrecisionOneHot(data,labels)
+        if self.dataType == "one_hot_all":
+            accuracy = self.PrecisionOneHotAll(data,labels)
         elif self.dataType == "one_hot_zadeh_all":
             accuracy = self.PrecisionOneHotZadehAll(data,labels)
         elif self.dataType == "one_hot_zadeh" or self.dataType == "euclide_softmax":
             accuracy = self.PrecisionOneHotZadeh(data,labels)
+        elif self.dataType == "euclide_softmax_all":
+            accuracy = self.PrecisionEuclideSoftmaxAll(data,labels)
         elif self.dataType == "binary":
             accuracy = self.PrecisionBinary(data,labels)
+        elif self.dataType == "binary_all":
+            accuracy = self.PrecisionBinaryAll(data,labels)
         if self.dataType == "hadamard_euclide":
             accuracy = self.PrecisionHadamardEuclide(data,labels)
+        if self.dataType == "hadamard_euclide_all":
+            accuracy = self.PrecisionHadamardEuclideAll(data,labels)
 
         return  accuracy
+
+
 
 
 

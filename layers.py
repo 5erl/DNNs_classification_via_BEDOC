@@ -120,8 +120,8 @@ class LayerZadeh2OneHot(klayer.Layer):
 
             index = self.codes_count-1
 
-            for code in range(self.codes_count):
-                table[index] = code.Num2BinArray(code,self.codes_width,type=np.float32)
+            for code_index in range(self.codes_count):
+                table[index] = code.Num2BinArray(code_index,self.codes_width,type=np.float32)
 
                 #print("[%s] C:%s --> %s " % (index,code,table[index]))
                 index -= 1
@@ -177,7 +177,7 @@ class LayerEuclideSoftmax(klayer.Layer):
         dataType = code.GetDataType()
         #print("LayerEuclideSoftmax layer init: %s"% dataType )
 
-        if dataType == "euclide_softmax":
+        if dataType == "euclide_softmax" or dataType == "euclide_softmax_all":
 
             self.codes_width = code.CodeWidth()
             oneHotLabelAliases = code.CreateOneHotClasses()
